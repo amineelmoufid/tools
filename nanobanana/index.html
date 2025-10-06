@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Nano Banana — Cyber Image Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Optional font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0a0d12;
+      --panel:#0e121a;
+      --text:#e9ecf1;
+      --muted:#a7b0c0;
+      --accent1:#00f0ff;
+      --accent2:#ad00ff;
+      --ring: 0 0 0 2px rgba(0,240,255,.25), 0 0 35px rgba(173,0,255,.15), inset 0 0 50px rgba(173,0,255,.06);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      color:var(--text); background: radial-gradient(1200px 400px at 15% -10%,rgba(0,240,255,.08),transparent 60%),
+                          radial-gradient(900px 500px at 85% 0%,rgba(173,0,255,.08),transparent 60%),
+                          linear-gradient(180deg,#07090e,#0a0d12 60%,#080a0f);
+    }
+    header{
+      padding:28px 20px 10px; text-align:center;
+    }
+    .brand{
+      font-weight:800; font-size:clamp(20px,3vw,28px); letter-spacing:.3px;
+      background: linear-gradient(90deg,var(--accent1),var(--accent2));
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+    }
+    .sub{color:var(--muted); margin-top:6px}
+    .wrap{max-width:1100px; margin:22px auto 36px; padding:0 16px}
+    .card{
+      background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
+      border:1px solid rgba(255,255,255,.08); border-radius: var(--radius);
+      box-shadow: var(--ring);
+      padding:18px; backdrop-filter: blur(12px);
+    }
+    .row{display:grid; grid-template-columns: 1fr 1fr; gap:14px}
+    @media (max-width: 900px){ .row{grid-template-columns: 1fr} }
+    label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px; letter-spacing:.4px; text-transform:uppercase}
+    input[type="text"], input[type="password"], select, textarea{
+      width:100%; padding:12px 12px; border-radius: 10px;
+      border:1px solid rgba(255,255,255,.1); background:#0c1017; color:var(--text);
+      outline:none; transition:.2s border,.2s box-shadow;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, select:focus, textarea:focus{
+      border-color: rgba(0,240,255,.4); box-shadow: 0 0 0 3px rgba(0,240,255,.1);
+    }
+    .controls{display:flex; gap:10px; align-items:end; flex-wrap:wrap}
+    .btn{
+      appearance:none; border:0; cursor:pointer; user-select:none;
+      padding:12px 16px; border-radius:12px; font-weight:700; letter-spacing:.2px;
+      background: linear-gradient(90deg,var(--accent1),var(--accent2));
+      color:#041218; box-shadow: 0 10px 25px rgba(0,240,255,.15), 0 2px 0 rgba(0,0,0,.15);
+      transition: transform .06s ease, filter .2s ease;
+    }
+    .btn:hover{filter:saturate(1.1) brightness(1.02)}
+    .btn:active{transform: translateY(1px)}
+    .btn.secondary{
+      background:transparent; color:var(--text); border:1px solid rgba(255,255,255,.12);
+      box-shadow:none;
+    }
+    .hint{font-size:12px; color:var(--muted); margin-top:8px}
+    .grid{
+      display:grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr));
+      gap:14px; margin-top:18px;
+    }
+    .imgCard{
+      position:relative; border-radius:12px; overflow:hidden; background:#0b0f16; border:1px solid rgba(255,255,255,.08);
+    }
+    .imgCard img{display:block; width:100%; height:auto}
+    .imgActions{
+      position:absolute; inset:auto 10px 10px 10px; display:flex; gap:8px; justify-content:space-between;
+    }
+    .pill{
+      font-size:12px; padding:6px 10px; border-radius:999px; background:rgba(0,0,0,.5);
+      color:#eaf8ff; border:1px solid rgba(255,255,255,.15); text-decoration:none;
+    }
+    .footerNote{margin-top:20px; color:var(--muted); font-size:12px}
+    .toggle{cursor:pointer; color:var(--accent1); text-decoration:underline}
+    .spinner{
+      width:18px;height:18px;border-radius:50%; border:3px solid rgba(255,255,255,.1);
+      border-top-color:var(--accent1); animation:spin 1s linear infinite; display:inline-block; vertical-align:-3px;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .banner{
+      margin-top:12px; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+      background: linear-gradient(180deg, rgba(0,240,255,.08), rgba(173,0,255,.06));
+      color:#d9faff; font-size:13px;
+    }
+    details{margin-top:10px}
+    summary{cursor:pointer; color:var(--accent1)}
+    code, pre{background:#0c1017; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px; color:#e6f0ff}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Nano Banana — Cyber Image Generator</div>
+    <div class="sub">Consistent “modern cyber” style, powered by <strong>gemini-2.5-flash-image</strong></div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <div class="row">
+        <div>
+          <label for="apiKey">Gemini API Key</label>
+          <input id="apiKey" type="password" />
+          <div class="hint">Stored only in your browser (localStorage). You shared a key; rotate if you later publish this file.</div>
+        </div>
+        <div class="controls">
+          <div style="flex:1">
+            <label for="subject">Subject (you type only this)</label>
+            <input id="subject" type="text" placeholder="e.g., holographic banana on chrome pedestal" />
+          </div>
+          <div>
+            <label for="ratio">Aspect</label>
+            <select id="ratio">
+              <option value="1:1" selected>1:1</option>
+              <option value="16:9">16:9</option>
+              <option value="3:4">3:4</option>
+              <option value="4:3">4:3</option>
+            </select>
+          </div>
+          <div>
+            <label for="count">Images</label>
+            <select id="count">
+              <option>1</option>
+              <option selected>2</option>
+              <option>4</option>
+            </select>
+          </div>
+          <button class="btn" id="goBtn">Generate</button>
+        </div>
+      </div>
+
+      <details>
+        <summary>Advanced (view/modify the JSON style template)</summary>
+        <div class="hint" style="margin:8px 0 10px">
+          The app auto‑fills <code>subject</code> into this JSON, then sends a prompt like “Generate one image from this spec”.
+        </div>
+        <textarea id="jsonTemplate" rows="10" spellcheck="false"></textarea>
+      </details>
+
+      <div id="status" class="banner" style="display:none"></div>
+      <div id="grid" class="grid"></div>
+
+      <div class="footerNote">
+        • Uses <code>models:generateContent</code> and reads image bytes from <code>inlineData</code> in the candidate parts.  
+        • Aspect ratio is set via <code>generationConfig.imageConfig.aspectRatio</code>.  
+        • Images include a SynthID watermark (invisible).  
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <strong>Tip:</strong> If opening this file directly via <code>file://</code> shows a CORS warning, run a tiny server:
+      <pre>python -m http.server 8000</pre>
+    </section>
+  </main>
+
+  <script>
+    // ---- defaults ----
+    const DEFAULT_TEMPLATE = {
+      style: {
+        theme: "modern cyber / neon startup aesthetic",
+        palette: ["#00F0FF", "#AD00FF", "#0B0F17"],
+        lighting: "soft rim light + large softbox + subtle bloom",
+        background: "dark glass panel with thin neon grid, subtle fog",
+        finish: "3D render, glossy materials, crisp detail",
+        consistency: "KEEP THIS STYLE IDENTICAL ACROSS ALL GENERATIONS"
+      },
+      framing: {
+        shot: "hero/product three-quarter view centered",
+        lens: "35mm",
+        aspect_ratio: "1:1"
+      },
+      output: {
+        guidance: "No text overlays, no signatures, simple backdrop, clean shadow under subject."
+      },
+      subject: ""
+    };
+
+    // Prefill UI
+    const apiKeyEl   = document.getElementById('apiKey');
+    const subjectEl  = document.getElementById('subject');
+    const ratioEl    = document.getElementById('ratio');
+    const countEl    = document.getElementById('count');
+    const tmplEl     = document.getElementById('jsonTemplate');
+    const statusEl   = document.getElementById('status');
+    const gridEl     = document.getElementById('grid');
+    const goBtn      = document.getElementById('goBtn');
+
+    const SAVED_KEY = localStorage.getItem('nano_api_key');
+    apiKeyEl.value = SAVED_KEY || "AIzaSyAcJ2ZHlmjzuNwbkah8uy9dPvOm-DCGUeI"; // your provided key
+    tmplEl.value = JSON.stringify(DEFAULT_TEMPLATE, null, 2);
+
+    function setStatus(msg, kind='info'){
+      statusEl.style.display = 'block';
+      statusEl.textContent = msg;
+    }
+    function clearStatus(){ statusEl.style.display = 'none'; statusEl.textContent = ''; }
+
+    function b64ToBlob(base64, mime = "image/png"){
+      const byteChars = atob(base64);
+      const byteNums = new Array(byteChars.length);
+      for (let i=0; i<byteChars.length; i++){ byteNums[i] = byteChars.charCodeAt(i); }
+      return new Blob([new Uint8Array(byteNums)], { type: mime });
+    }
+
+    async function generateOnce({apiKey, promptText, aspect}){
+      const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+      const body = {
+        contents: [{
+          parts: [{ text: promptText }]
+        }],
+        generationConfig: {
+          responseModalities: ["Image"],
+          imageConfig: { aspectRatio: aspect }
+        }
+      };
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok){
+        const err = await res.json().catch(()=>({error:{message:res.statusText}}));
+        throw new Error(err?.error?.message || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const parts = (data?.candidates?.[0]?.content?.parts) || [];
+      const out = [];
+      for (const p of parts){
+        const inline = p.inlineData || p.inline_data;
+        if (inline?.data){
+          out.push({ mime: inline.mimeType || inline.mime_type || "image/png", b64: inline.data });
+        }
+      }
+      if (!out.length){
+        // Sometimes text is returned alongside images; surface it if present
+        const txt = parts.find(p=>p.text)?.text;
+        if (txt) throw new Error("Model returned text instead of image: " + txt);
+        throw new Error("No image bytes found in response.");
+      }
+      return out;
+    }
+
+    function buildPromptFromJSON(subject, aspect, templateJSON){
+      let spec;
+      try {
+        spec = JSON.parse(templateJSON);
+      } catch(e){
+        spec = structuredClone(DEFAULT_TEMPLATE);
+      }
+      spec.subject = subject;
+      if (spec.framing) spec.framing.aspect_ratio = aspect;
+
+      // Compose a descriptive instruction so the model honors the JSON spec.
+      const prompt =
+`Generate ONE image from this spec. Keep style EXACTLY consistent across a series.
+
+JSON spec:
+${JSON.stringify(spec, null, 2)}
+
+Requirements:
+- Use the style block as art direction; do not change it between runs.
+- Aspect ratio: ${aspect}.
+- No text overlays or watermarks in the scene.
+- Return only the image.`;
+      return prompt;
+    }
+
+    function addImageToGrid({blob, idx}){
+      const url = URL.createObjectURL(blob);
+      const card = document.createElement('div');
+      card.className = 'imgCard';
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'Generated image ' + (idx+1);
+      const actions = document.createElement('div');
+      actions.className = 'imgActions';
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nano-banana-${Date.now()}-${idx+1}.png`;
+      a.className = 'pill';
+      a.textContent = 'Download';
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'pill';
+      copyBtn.textContent = 'Copy';
+      copyBtn.onclick = async () => {
+        const b = await (await fetch(url)).blob();
+        await navigator.clipboard.write([new ClipboardItem({[b.type]: b})]);
+        copyBtn.textContent = 'Copied ✓';
+        setTimeout(()=>copyBtn.textContent='Copy',1200);
+      };
+      actions.append(a, copyBtn);
+      card.append(img, actions);
+      gridEl.prepend(card);
+    }
+
+    goBtn.addEventListener('click', async () => {
+      const apiKey = apiKeyEl.value.trim();
+      const subject = subjectEl.value.trim();
+      const aspect  = ratioEl.value;
+      const total   = parseInt(countEl.value, 10) || 1;
+
+      if (!apiKey){ setStatus("Add your API key first."); return; }
+      if (!subject){ setStatus("Type a subject to generate."); return; }
+
+      localStorage.setItem('nano_api_key', apiKey);
+
+      const promptText = buildPromptFromJSON(subject, aspect, tmplEl.value);
+      goBtn.disabled = true; goBtn.innerHTML = '<span class="spinner"></span> Generating…';
+      setStatus("Generating with gemini-2.5-flash-image… This may take a few seconds.");
+
+      try {
+        // Call N times to get multiple images (API supports interleaved text+image; multiple images per call are not guaranteed)
+        for (let i=0; i<total; i++){
+          const images = await generateOnce({apiKey, promptText, aspect});
+          images.forEach((imgObj, j) => {
+            const blob = b64ToBlob(imgObj.b64, imgObj.mime);
+            addImageToGrid({blob, idx: (i*images.length)+j});
+          });
+        }
+        clearStatus();
+      } catch (err){
+        const msg = String(err?.message || err);
+        // Basic friendly mapping for common issues
+        const friendly = /429|rate|quota/i.test(msg) ? 
+          "Rate limit reached on the free tier. Try again later or reduce frequency." :
+          /API key|permission|UNAUTHENTICATED/i.test(msg) ?
+          "API key problem. Double‑check the key or rotate it." : msg;
+        setStatus("Error: " + friendly);
+      } finally {
+        goBtn.disabled = false; goBtn.textContent = 'Generate';
+      }
+    });
+  </script>
+</body>
+</html>
