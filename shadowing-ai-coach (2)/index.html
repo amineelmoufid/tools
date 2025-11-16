@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shadowing AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #0D0E12;
+        background-image: radial-gradient(ellipse at top, #1B2735 0%, #090A0F 100%);
+        background-attachment: fixed;
+      }
+      .glass-pane {
+        background: rgba(28, 30, 40, 0.6);
+        backdrop-filter: blur(25px);
+        -webkit-backdrop-filter: blur(25px);
+        border-radius: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      }
+      .glass-button {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2), 
+                    inset 0 1px 0px rgba(255, 255, 255, 0.1);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      }
+      .glass-button:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+      }
+      .glass-button:active:not(:disabled) {
+        transform: scale(0.95) translateY(0);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+      }
+      .glass-input {
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 9999px;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+          transition: all 0.2s ease-in-out;
+      }
+      .glass-input:focus {
+          outline: none;
+          border-color: rgba(100, 180, 255, 0.5);
+          box-shadow: 0 0 0 3px rgba(100, 180, 255, 0.2), inset 0 2px 4px rgba(0,0,0,0.5);
+      }
+      .inset-panel {
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 16px;
+          box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
+      }
+      .text-emboss {
+        text-shadow: 0 1px 1px rgba(0,0,0,0.5);
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.5s ease-out forwards;
+        animation-fill-mode: backwards;
+      }
+      .animation-delay-100 { animation-delay: 100ms; }
+      .animation-delay-200 { animation-delay: 200ms; }
+      .animation-delay-300 { animation-delay: 300ms; }
+      .animation-delay-400 { animation-delay: 400ms; }
+    </style>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1"
+      }
+    }
+    </script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="text-gray-200">
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+// --- CDN IMPORTS ---
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom/client';
+import { GoogleGenAI, Type, Modality } from "@google/genai";
+
+// --- FROM utils/audioUtils.ts ---
+const encode = (bytes) => {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
+const decode = (base64) => {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+};
+
+const decodeAudioData = async (data, ctx, sampleRate, numChannels) => {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+};
+
+const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+            const base64data = reader.result;
+            resolve(base64data.split(',')[1]);
+        };
+        reader.onerror = (error) => {
+            reject(error);
+        };
+    });
+};
+
+// --- FROM services/geminiService.ts ---
+const ai = new GoogleGenAI({ apiKey: "AIzaSyDADF4MPMuYBSDECKz2ANZQgmnCdBHa8iM" });
+
+async function generateSentence(topic, weaknesses) {
+    try {
+        const hasWeaknesses = weaknesses.length > 0;
+        const model = hasWeaknesses ? 'gemini-2.5-pro' : 'gemini-2.5-flash-lite';
+
+        const prompt = (hasWeaknesses
+            ? `I'm an English learner struggling with these sounds/words: ${weaknesses.join(', ')}. Create a single, natural-sounding sentence for me to practice that includes some of these challenges. The sentence should be about ${topic}.`
+            : `Create a single, natural-sounding English sentence for pronunciation practice about ${topic}.`)
+            + " IMPORTANT: Your entire response must be ONLY the sentence itself. Do not add any other text, quotes, or formatting like asterisks.";
+
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            ...(hasWeaknesses && { config: { thinkingConfig: { thinkingBudget: 32768 } } }),
+        });
+        
+        let sentence = response.text.trim();
+        
+        const lastColonIndex = sentence.lastIndexOf(':');
+        if (lastColonIndex > -1) {
+            const textAfter = sentence.substring(lastColonIndex + 1).trim();
+            if (textAfter) {
+                sentence = textAfter;
+            }
+        }
+        
+        const charsToTrim = ['"', '*', "'", " "];
+        while (sentence.length > 1 && charsToTrim.includes(sentence[0])) {
+            sentence = sentence.substring(1);
+        }
+        while (sentence.length > 1 && charsToTrim.includes(sentence[sentence.length - 1])) {
+            sentence = sentence.substring(0, sentence.length - 1);
+        }
+        
+        return sentence;
+
+    } catch (error) {
+        console.error("Error generating sentence:", error);
+        return "The quick brown fox jumps over the lazy dog.";
+    }
+}
+
+async function generateDrill(target) {
+    try {
+        const model = 'gemini-2.5-pro';
+        const prompt = `You are an English pronunciation coach. A user wants to practice the following sound or word: "${target}". Generate a list of 5 to 7 short, distinct practice items. These can be minimal pairs (like 'ship' vs 'sheep'), short sentences, or tongue twisters that specifically target this pronunciation challenge. Return the result as a JSON object with a single key "drills" which is an array of strings.`;
+
+        const responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                drills: {
+                    type: Type.ARRAY,
+                    description: "A list of 5-7 short practice sentences or word pairs.",
+                    items: {
+                        type: Type.STRING
+                    }
+                }
+            },
+            required: ['drills']
+        };
+
+        const response = await ai.models.generateContent({
+            model: model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema,
+            },
+        });
+
+        const jsonText = response.text.trim();
+        const result = JSON.parse(jsonText);
+        return result.drills || [];
+    } catch (error) {
+        console.error("Error generating drill:", error);
+        throw new Error("Failed to generate pronunciation drill.");
+    }
+}
+
+async function generateSpeech(text) {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text: `Say this sentence clearly and at a moderate pace: ${text}` }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: 'Kore' },
+                    },
+                },
+            },
+        });
+        
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!base64Audio) {
+            throw new Error("No audio data returned from TTS API.");
+        }
+        return base64Audio;
+    } catch (error) {
+        console.error("Error generating speech:", error);
+        throw new Error("Failed to generate speech.");
+    }
+}
+
+async function analyzePronunciation(sentence, userAudioBase64, mimeType) {
+    try {
+        const model = 'gemini-2.5-pro';
+        const prompt = `You are an expert American English pronunciation coach. Analyze my spoken audio against the provided text sentence. Provide a detailed, structured analysis of my pronunciation in JSON format.
+- Transcribe what was actually said.
+- For the 'words' analysis, base it on the provided target sentence, indicating accuracy for each word. If a word from the target sentence was missed, mark its accuracy as 'major_error' and note it was omitted.
+- Crucially, also provide pitch contour data for both my audio and an "ideal" native speaker's pronunciation of the sentence. The contour must be an array of 25 numerical pitch values (in Hz) that are evenly-spaced in time. Ensure both arrays have the same length.`;
+        
+        const responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                overallScore: { type: Type.INTEGER, description: "A score from 0 to 100 on pronunciation accuracy." },
+                overallFeedback: { type: Type.STRING, description: "A brief, encouraging summary of the user's performance." },
+                transcription: { type: Type.STRING, description: "A transcription of what the user actually said." },
+                words: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            word: { type: Type.STRING },
+                            accuracy: { type: Type.STRING, description: "Enum: 'correct', 'minor_error', 'major_error'" },
+                            feedback: { type: Type.STRING, description: "Specific feedback on this word's pronunciation, focusing on phonemes, stress, or if it was omitted." }
+                        }
+                    }
+                },
+                rhythmAndIntonationFeedback: { type: Type.STRING, description: "Feedback on the overall rhythm, pacing, and intonation of the speech." },
+                userPitchContour: {
+                    type: Type.ARRAY,
+                    description: "An array of 25 numbers representing the user's pitch contour over time.",
+                    items: { type: Type.NUMBER }
+                },
+                targetPitchContour: {
+                    type: Type.ARRAY,
+                    description: "An array of 25 numbers representing the ideal target pitch contour over time.",
+                    items: { type: Type.NUMBER }
+                }
+            },
+            required: ['overallScore', 'overallFeedback', 'transcription', 'words', 'rhythmAndIntonationFeedback', 'userPitchContour', 'targetPitchContour']
+        };
+
+        const response = await ai.models.generateContent({
+            model: model,
+            contents: {
+                parts: [
+                    { text: `Target sentence: "${sentence}"\n\n${prompt}` },
+                    { inlineData: { data: userAudioBase64, mimeType: mimeType } }
+                ]
+            },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema,
+            },
+        });
+
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText);
+    } catch (error)
+ {
+        console.error("Error analyzing pronunciation:", error);
+        throw new Error("Failed to analyze pronunciation. The AI model may have returned an unexpected format.");
+    }
+}
+
+async function getChatResponse(history, message) {
+    const chat = ai.chats.create({
+      model: 'gemini-2.5-flash',
+      history: history,
+    });
+    const response = await chat.sendMessage({ message: message });
+    return response.text;
+}
+
+// --- FROM hooks/useAudioRecorder.ts ---
+const useAudioRecorder = () => {
+    const [status, setStatus] = useState('idle');
+    const [audioBlob, setAudioBlob] = useState(null);
+    const [error, setError] = useState(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+
+    const startRecording = useCallback(async () => {
+        if (status === 'recording') return;
+        
+        setError(null);
+        setAudioBlob(null);
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            
+            mediaRecorderRef.current.ondataavailable = (event) => {
+                audioChunksRef.current.push(event.data);
+            };
+
+            mediaRecorderRef.current.onstop = () => {
+                const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+                const blob = new Blob(audioChunksRef.current, { type: mimeType });
+                setAudioBlob(blob);
+                audioChunksRef.current = [];
+                stream.getTracks().forEach(track => track.stop());
+                setStatus('stopped');
+            };
+
+            mediaRecorderRef.current.onerror = (event) => {
+                console.error("MediaRecorder error:", event);
+                setError("An error occurred during recording.");
+                setStatus('idle');
+            };
+
+            mediaRecorderRef.current.start();
+            setStatus('recording');
+        } catch (err) {
+            console.error("Error accessing microphone:", err);
+            setError("Microphone access denied. Please allow microphone permissions in your browser settings.");
+            setStatus('idle');
+        }
+    }, [status]);
+
+    const stopRecording = useCallback(() => {
+        if (mediaRecorderRef.current && status === 'recording') {
+            mediaRecorderRef.current.stop();
+        }
+    }, [status]);
+    
+    const reset = useCallback(() => {
+        setStatus('idle');
+        setAudioBlob(null);
+        setError(null);
+    }, []);
+
+    return { status, audioBlob, error, startRecording, stopRecording, reset };
+};
+
+// --- ICON COMPONENTS ---
+const MicIcon = ({className = "h-8 w-8"}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`${className} text-white/90`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+    </svg>
+);
+const PlayIcon = ({className = "h-8 w-8"}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`${className} text-white/90`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+const StopIcon = ({className = "h-8 w-8"}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`${className} text-white/90`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 10h6v4H9z" />
+    </svg>
+);
+const SparklesIcon = ({className = "h-5 w-5"}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+    </svg>
+);
+const ChatIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+    </svg>
+);
+const PracticeIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0m0 0l-7.07 7.072" />
+        <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+);
+const DrillIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+);
+const SendIcon = ({className = "h-6 w-6"}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`${className} text-white/90`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+    </svg>
+);
+
+// --- NEW PitchContourChart component ---
+const PitchContourChart = ({ userContour, targetContour }) => {
+    if (!userContour?.length || !targetContour?.length) {
+        return null;
+    }
+
+    const width = 500;
+    const height = 120;
+    const padding = 10;
+
+    const allValues = [...userContour, ...targetContour];
+    const minY = Math.min(...allValues);
+    const maxY = Math.max(...allValues);
+    const yRange = maxY - minY === 0 ? 1 : maxY - minY;
+
+    const generatePath = (contour) => {
+        const xStep = (width - padding * 2) / (contour.length - 1);
+        
+        const points = contour.map((point, i) => {
+            const x = i * xStep + padding;
+            const y = height - padding - ((point - minY) / yRange) * (height - padding * 2);
+            return [x, y];
+        });
+
+        return points.map((p, i) => (i === 0 ? 'M' : 'L') + `${p[0]},${p[1]}`).join(' ');
+    };
+    
+    const userPath = generatePath(userContour);
+    const targetPath = generatePath(targetContour);
+
+    return (
+        <div className="w-full">
+            <svg width="100%" viewBox={`0 0 ${width} ${height}`}>
+                <path d={targetPath} stroke="#4f8cff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={userPath} stroke="#34D399" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <div className="flex justify-center gap-6 mt-2 text-xs text-gray-400 text-emboss">
+                <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#34D399]"></div>
+                    <span>Your Pitch</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#4f8cff]"></div>
+                    <span>Target Pitch</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- FROM components/FeedbackCard.tsx ---
+const FeedbackCard = ({ analysis, audioBlob }) => {
+    const [userAudioUrl, setUserAudioUrl] = useState(null);
+
+    useEffect(() => {
+        if (audioBlob) {
+            const url = URL.createObjectURL(audioBlob);
+            setUserAudioUrl(url);
+            return () => URL.revokeObjectURL(url);
+        }
+    }, [audioBlob]);
+
+    const playUserAudio = () => {
+        if (userAudioUrl) {
+            new Audio(userAudioUrl).play();
+        }
+    };
+    
+    const getScoreColor = (score) => {
+        if (score > 85) return 'text-green-400';
+        if (score > 60) return 'text-yellow-400';
+        return 'text-red-400';
+    };
+
+    const getScoreGlow = (score) => {
+        if (score > 85) return 'bg-green-400/50';
+        if (score > 60) return 'bg-yellow-400/50';
+        return 'bg-red-400/50';
+    };
+
+    const getWordAccuracyColor = (accuracy) => {
+        switch(accuracy) {
+            case 'correct': return 'border-green-500/50';
+            case 'minor_error': return 'border-yellow-500/50';
+            case 'major_error': return 'border-red-500/50';
+        }
+    }
+
+    return (
+        <div className="glass-pane p-6 md:p-8 space-y-6 text-emboss">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-6 animate-fade-in">
+                <div className="text-center md:text-left">
+                    <h2 className="text-2xl font-bold text-white">Your Results</h2>
+                    <p className="text-gray-400">Here's a breakdown of your pronunciation.</p>
+                </div>
+                 <div className="relative flex items-center justify-center w-32 h-32">
+                    <div className={`absolute inset-0 rounded-full ${getScoreGlow(analysis.overallScore)} blur-2xl animate-pulse`}></div>
+                    <div className="relative w-full h-full rounded-full flex items-center justify-center inset-panel">
+                        <div className={`text-5xl font-bold ${getScoreColor(analysis.overallScore)}`}>
+                            {analysis.overallScore}
+                        </div>
+                    </div>
+                    <span className="absolute bottom-6 text-xl text-gray-500">/100</span>
+                </div>
+            </div>
+
+            <div className="inset-panel p-4 rounded-xl animate-fade-in animation-delay-100">
+                <h3 className="font-semibold text-lg text-gray-300 mb-2">Overall Feedback</h3>
+                <p className="text-gray-300">{analysis.overallFeedback}</p>
+            </div>
+
+            <div className="inset-panel p-4 rounded-xl animate-fade-in animation-delay-200">
+                <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-lg text-gray-300 mb-2">You Said:</h3>
+                    {userAudioUrl && (
+                        <button onClick={playUserAudio} className="w-10 h-10 rounded-full glass-button flex items-center justify-center">
+                            <PlayIcon className="w-5 h-5" />
+                        </button>
+                    )}
+                </div>
+                <p className="text-gray-300 italic">"{analysis.transcription}"</p>
+            </div>
+
+            <div className="space-y-4 animate-fade-in animation-delay-300">
+                <h3 className="font-semibold text-lg text-gray-300 pl-2">Word-by-Word Analysis</h3>
+                <div className="space-y-3">
+                    {analysis.words.map((word, index) => (
+                        <div key={index} className={`p-4 rounded-xl inset-panel border-l-4 ${getWordAccuracyColor(word.accuracy)}`}>
+                            <p className="font-semibold text-lg text-gray-200">{word.word}</p>
+                            <p className="text-sm text-gray-400">{word.feedback}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="inset-panel p-4 rounded-xl animate-fade-in animation-delay-400">
+                <h3 className="font-semibold text-lg text-gray-300 mb-2">Pitch & Intonation</h3>
+                <p className="text-gray-400 mb-4 text-sm">{analysis.rhythmAndIntonationFeedback}</p>
+                <PitchContourChart 
+                    userContour={analysis.userPitchContour} 
+                    targetContour={analysis.targetPitchContour} 
+                />
+            </div>
+        </div>
+    );
+};
+
+// --- FROM components/ChatView.tsx ---
+const ChatView = () => {
+  const [messages, setMessages] = useState([
+    { role: 'model', text: 'Hello! I am your AI assistant. Ask me anything about pronunciation, language learning, or any other topic.' }
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [messages]);
+
+  const handleSend = async () => {
+    if (input.trim() === '' || isLoading) return;
+
+    const userMessage = { role: 'user', text: input };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+        const history = messages.map(msg => ({
+            role: msg.role,
+            parts: [{ text: msg.text }]
+        }));
+      const responseText = await getChatResponse(history, input);
+      const modelMessage = { role: 'model', text: responseText };
+      setMessages(prev => [...prev, modelMessage]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      const errorMessage = { role: 'model', text: 'Sorry, I encountered an error. Please try again.' };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full w-full glass-pane">
+      <div className="flex-grow p-4 overflow-y-auto space-y-4">
+        {messages.map((msg, index) => (
+          <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-xs md:max-w-md lg:max-w-lg px-4 py-3 rounded-2xl text-emboss backdrop-blur-md ${msg.role === 'user' ? 'bg-blue-500/20 text-white rounded-br-none border border-blue-400/30' : 'bg-black/40 text-gray-200 rounded-bl-none border border-white/10'}`}>
+              <p className="whitespace-pre-wrap">{msg.text}</p>
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+             <div className="max-w-xs md:max-w-md lg:max-w-lg px-4 py-3 rounded-2xl bg-black/40 text-gray-200 rounded-bl-none border border-white/10">
+                <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse [animation-delay:-0.3s]"></div>
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse [animation-delay:-0.15s]"></div>
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                </div>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      <div className="p-4 mt-auto border-t border-white/10">
+        <div className="flex items-center space-x-3">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="Ask a question..."
+            className="flex-grow bg-transparent text-white placeholder-gray-400 border-none rounded-full py-3 px-5 focus:outline-none glass-input"
+            disabled={isLoading}
+          />
+          <button
+            onClick={handleSend}
+            disabled={isLoading || input.trim() === ''}
+            className="w-14 h-14 flex-shrink-0 flex items-center justify-center rounded-full glass-button disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <SendIcon className="w-6 h-6" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- FROM components/PracticeView.tsx ---
+const PracticeView = () => {
+    const [status, setStatus] = useState('idle');
+    const [topic, setTopic] = useState('a common daily conversation');
+    const [sentence, setSentence] = useState('');
+    const [ttsAudio, setTtsAudio] = useState(null);
+    const [analysis, setAnalysis] = useState(null);
+    const [error, setError] = useState(null);
+    const [weaknesses, setWeaknesses] = useState([]);
+    const [playbackProgress, setPlaybackProgress] = useState(0);
+    const [generationProgress, setGenerationProgress] = useState(0);
+    const [isTtsPlaying, setIsTtsPlaying] = useState(false);
+
+    const { status: recorderStatus, audioBlob, error: recorderError, startRecording, stopRecording, reset: resetRecorder } = useAudioRecorder();
+
+    const audioContextRef = useRef(null);
+    const animationFrameRef = useRef(null);
+    const generationFrameRef = useRef(null);
+
+
+    useEffect(() => {
+        if (!audioContextRef.current) {
+            audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }, []);
+    
+    useEffect(() => {
+        if (recorderError) {
+            setError(recorderError);
+            setStatus('ready');
+        }
+    }, [recorderError]);
+    
+    useEffect(() => {
+        if (recorderStatus === 'stopped' && audioBlob) {
+            handleAnalysis();
+        }
+    }, [recorderStatus, audioBlob]);
+
+    const handleGetSentence = useCallback(async () => {
+        setStatus('generating');
+        setError(null);
+        setAnalysis(null);
+        setSentence('');
+        setTtsAudio(null);
+        setPlaybackProgress(0);
+        setGenerationProgress(0);
+        resetRecorder();
+
+        if (generationFrameRef.current) {
+            cancelAnimationFrame(generationFrameRef.current);
+        }
+
+        try {
+            const newSentence = await generateSentence(topic, weaknesses);
+            setSentence(newSentence);
+            setStatus('generating_audio');
+            
+            const FAKE_PROGRESS_DURATION_MS = 2500;
+            const startTime = Date.now();
+            const animateProgress = () => {
+                const elapsedTime = Date.now() - startTime;
+                const progress = Math.min((elapsedTime / FAKE_PROGRESS_DURATION_MS) * 90, 90);
+                setGenerationProgress(progress);
+                
+                if (progress < 90) {
+                    generationFrameRef.current = requestAnimationFrame(animateProgress);
+                }
+            };
+            generationFrameRef.current = requestAnimationFrame(animateProgress);
+
+            const ttsBase64 = await generateSpeech(newSentence);
+            
+            if (generationFrameRef.current) {
+                cancelAnimationFrame(generationFrameRef.current);
+                generationFrameRef.current = null;
+            }
+            setGenerationProgress(100);
+
+            if (audioContextRef.current) {
+                const audioBuffer = await decodeAudioData(decode(ttsBase64), audioContextRef.current, 24000, 1);
+                setTtsAudio(audioBuffer);
+            }
+            
+            setTimeout(() => {
+                setStatus('ready');
+                setGenerationProgress(0);
+            }, 300);
+
+        } catch (err) {
+            setError('Failed to generate practice sentence. Please try again.');
+            setStatus('idle');
+            setGenerationProgress(0);
+            if (generationFrameRef.current) {
+                cancelAnimationFrame(generationFrameRef.current);
+                generationFrameRef.current = null;
+            }
+        }
+    }, [topic, weaknesses, resetRecorder]);
+
+    const handlePlayTts = () => {
+        if (!ttsAudio || !audioContextRef.current || isTtsPlaying) return;
+
+        if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+        }
+        
+        setIsTtsPlaying(true);
+        setPlaybackProgress(0);
+
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = ttsAudio;
+        source.connect(audioContextRef.current.destination);
+
+        const startTime = audioContextRef.current.currentTime;
+        const duration = ttsAudio.duration;
+
+        const updateProgress = () => {
+            if (!audioContextRef.current) return;
+            const elapsedTime = audioContextRef.current.currentTime - startTime;
+            const progress = Math.min((elapsedTime / duration) * 100, 100);
+            setPlaybackProgress(progress);
+
+            if (progress < 100) {
+                animationFrameRef.current = requestAnimationFrame(updateProgress);
+            }
+        };
+        
+        animationFrameRef.current = requestAnimationFrame(updateProgress);
+
+        source.onended = () => {
+            setIsTtsPlaying(false);
+            setPlaybackProgress(0);
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+                animationFrameRef.current = null;
+            }
+        };
+        source.start(0);
+    };
+
+    const handleRecord = () => {
+        if (status === 'ready' || status === 'feedback') {
+            setAnalysis(null);
+            startRecording();
+            setStatus('recording');
+        } else if (status === 'recording') {
+            stopRecording();
+        }
+    };
+    
+    const handleAnalysis = async () => {
+         if (!audioBlob) return;
+        setStatus('analyzing');
+        try {
+            const audioBase64 = await blobToBase64(audioBlob);
+            const feedback = await analyzePronunciation(sentence, audioBase64, audioBlob.type);
+            setAnalysis(feedback);
+            const newWeaknesses = feedback.words
+                .filter(w => w.accuracy === 'major_error')
+                .map(w => w.word);
+            setWeaknesses(prev => [...new Set([...prev, ...newWeaknesses])]);
+            setStatus('feedback');
+        } catch (err) {
+            setError('Failed to analyze your pronunciation. Please try again.');
+            setStatus('ready');
+        }
+    };
+
+    const getWordColor = (accuracy) => {
+        switch (accuracy) {
+            case 'correct': return 'text-green-400';
+            case 'minor_error': return 'text-yellow-400';
+            case 'major_error': return 'text-red-400';
+            default: return 'text-gray-300';
+        }
+    };
+    
+    const radius = 40;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (playbackProgress / 100) * circumference;
+    const generationStrokeDashoffset = circumference - (generationProgress / 100) * circumference;
+
+    return (
+        <div className="w-full space-y-6">
+            <div className="glass-pane p-4">
+                 <label htmlFor="topic-input" className="block text-sm font-medium text-gray-400 mb-2 ml-4 text-emboss">Practice Topic</label>
+                 <div className="flex gap-3">
+                    <input
+                        id="topic-input"
+                        type="text"
+                        value={topic}
+                        onChange={(e) => setTopic(e.target.value)}
+                        placeholder="e.g., ordering food"
+                        className="flex-grow bg-transparent text-white placeholder-gray-400 border-none rounded-full py-3 px-5 focus:outline-none glass-input"
+                        disabled={status !== 'idle' && status !== 'feedback' && status !== 'ready'}
+                    />
+                    <button 
+                        onClick={handleGetSentence} 
+                        disabled={status === 'generating' || status === 'generating_audio' || status === 'analyzing' || status === 'recording'}
+                        className="flex-shrink-0 flex items-center justify-center gap-2 px-6 py-3 font-medium text-white rounded-full glass-button disabled:opacity-50 disabled:cursor-not-allowed text-emboss"
+                    >
+                        <SparklesIcon className="w-5 h-5"/>
+                        <span>{status === 'generating' || status === 'generating_audio' ? 'Generating...' : 'New'}</span>
+                    </button>
+                 </div>
+            </div>
+
+            {error && <div className="glass-pane border-red-500/50 text-red-300 p-3 text-center text-emboss">{error}</div>}
+
+            {sentence && (
+                <div className="glass-pane p-8 space-y-8 text-center">
+                    <p className="text-2xl md:text-3xl font-light text-center leading-relaxed text-emboss min-h-[7rem] flex items-center justify-center flex-wrap">
+                        {status !== 'feedback' ? sentence.split(' ').map((word, i) => <span key={i}>{word}&nbsp;</span>) : 
+                            analysis?.words.map((word, i) => (
+                                <span key={i} className={`${getWordColor(word.accuracy)} font-medium`}>{word.word}&nbsp;</span>
+                            ))
+                        }
+                    </p>
+                    <div className="flex justify-center items-center gap-8 pt-4">
+                        <div className="relative w-20 h-20 flex items-center justify-center">
+                            <svg className="absolute top-0 left-0 w-full h-full" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
+                                <circle cx="42" cy="42" r={radius} stroke="rgba(255, 255, 255, 0.15)" strokeWidth="3" fill="transparent" />
+                                {isTtsPlaying && (
+                                    <circle
+                                        cx="42"
+                                        cy="42"
+                                        r={radius}
+                                        stroke="rgba(255, 255, 255, 0.9)"
+                                        strokeWidth="3"
+                                        fill="transparent"
+                                        strokeLinecap="round"
+                                        strokeDasharray={circumference}
+                                        strokeDashoffset={strokeDashoffset}
+                                        style={{ transition: 'stroke-dashoffset 0.05s linear' }}
+                                    />
+                                )}
+                                {status === 'generating_audio' && (
+                                    <circle
+                                        cx="42"
+                                        cy="42"
+                                        r={radius}
+                                        stroke="rgba(255, 255, 255, 0.9)"
+                                        strokeWidth="3"
+                                        fill="transparent"
+                                        strokeLinecap="round"
+                                        strokeDasharray={circumference}
+                                        strokeDashoffset={generationStrokeDashoffset}
+                                        style={{ transition: 'stroke-dashoffset 0.1s linear' }}
+                                    />
+                                )}
+                            </svg>
+                            <button onClick={handlePlayTts} disabled={isTtsPlaying || (status !== 'ready' && status !== 'feedback')} className="w-20 h-20 rounded-full glass-button flex items-center justify-center disabled:opacity-50">
+                                <PlayIcon className="w-10 h-10" />
+                            </button>
+                        </div>
+                        <button onClick={handleRecord} disabled={status !== 'ready' && status !== 'recording' && status !== 'feedback'} 
+                        className={`w-24 h-24 rounded-full glass-button flex items-center justify-center transition-all duration-300 transform disabled:opacity-50
+                            ${status === 'recording' ? 'bg-red-500/30 border-red-400/80 shadow-[0_0_25px_rgba(255,80,80,0.5),_inset_0_1px_1px_rgba(255,255,255,0.2)]' : 'bg-blue-500/20 border-blue-400/60'}`}>
+                            {status === 'recording' ? <StopIcon className="w-10 h-10" /> : <MicIcon className="w-10 h-10" />}
+                        </button>
+                    </div>
+                </div>
+            )}
+            
+            {status === 'analyzing' && (
+                <div className="text-center p-4 glass-pane">
+                    <div className="flex justify-center items-center space-x-2">
+                        <div className="w-3 h-3 bg-blue-400 rounded-full animate-pulse [animation-delay:-0.3s]"></div>
+                        <div className="w-3 h-3 bg-blue-400 rounded-full animate-pulse [animation-delay:-0.15s]"></div>
+                        <div className="w-3 h-3 bg-blue-400 rounded-full animate-pulse"></div>
+                    </div>
+                    <p className="mt-3 text-gray-400 text-emboss">Analyzing your speech...</p>
+                </div>
+            )}
+
+            {status === 'feedback' && analysis && (
+                <FeedbackCard analysis={analysis} audioBlob={audioBlob} />
+            )}
+        </div>
+    );
+};
+
+// --- FROM components/DrillsView.tsx ---
+const DrillsView = () => {
+    const [target, setTarget] = useState('');
+    const [drills, setDrills] = useState([]);
+    const [currentDrillIndex, setCurrentDrillIndex] = useState(0);
+
+    const [status, setStatus] = useState('idle'); // idle, generating, generating_audio, ready, playing_tts, recording, analyzing, feedback
+    const [ttsAudio, setTtsAudio] = useState(null);
+    const [analysis, setAnalysis] = useState(null);
+    const [error, setError] = useState(null);
+    const [isTtsPlaying, setIsTtsPlaying] = useState(false);
+    
+    const { status: recorderStatus, audioBlob, error: recorderError, startRecording, stopRecording, reset: resetRecorder } = useAudioRecorder();
+
+    const audioContextRef = useRef(null);
+    const animationFrameRef = useRef(null);
+
+    const drillSuggestions = [
+        "ship vs. sheep",
+        "the 'th' sound",
+        "R and L sounds",
+        "beach vs. b*tch",
+        "word stress: PRO-gress vs. pro-GRESS",
+        "silent letters in 'knife'",
+        "schwa sound in 'about'",
+        "'v' vs 'w' sound"
+    ];
+
+    useEffect(() => {
+        if (!audioContextRef.current) {
+            audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }, []);
+
+    useEffect(() => {
+        if (recorderError) {
+            setError(recorderError);
+            setStatus('ready');
+        }
+    }, [recorderError]);
+    
+    useEffect(() => {
+        if (recorderStatus === 'stopped' && audioBlob) {
+            handleAnalysis();
+        }
+    }, [recorderStatus, audioBlob]);
+    
+    useEffect(() => {
+        if (drills.length > 0 && currentDrillIndex >= 0) {
+            const fetchTtsForCurrentDrill = async () => {
+                setStatus('generating_audio');
+                setAnalysis(null);
+                setTtsAudio(null);
+                setError(null);
+                try {
+                    const currentSentence = drills[currentDrillIndex];
+                    const ttsBase64 = await generateSpeech(currentSentence);
+                    if (audioContextRef.current) {
+                        const audioBuffer = await decodeAudioData(decode(ttsBase64), audioContextRef.current, 24000, 1);
+                        setTtsAudio(audioBuffer);
+                    }
+                    setStatus('ready');
+                } catch (err) {
+                    setError('Failed to load audio for this drill.');
+                    setStatus('idle');
+                }
+            };
+            fetchTtsForCurrentDrill();
+        }
+    }, [currentDrillIndex, drills]);
+
+    const handleGenerateDrill = async () => {
+        if (target.trim() === '') return;
+        setStatus('generating');
+        setError(null);
+        setAnalysis(null);
+        setDrills([]);
+        setTtsAudio(null);
+        resetRecorder();
+
+        try {
+            const newDrills = await generateDrill(target);
+            if (newDrills.length === 0) {
+                setError("Could not generate drills for this topic. Please try something else.");
+                setStatus('idle');
+                return;
+            }
+            setDrills(newDrills);
+            setCurrentDrillIndex(0);
+        } catch (err) {
+            setError('Failed to generate drills. Please try again.');
+            setStatus('idle');
+        }
+    };
+    
+    const handlePlayTts = () => {
+        if (!ttsAudio || !audioContextRef.current || isTtsPlaying) return;
+        setIsTtsPlaying(true);
+        
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = ttsAudio;
+        source.connect(audioContextRef.current.destination);
+        source.onended = () => { setIsTtsPlaying(false); };
+        source.start(0);
+    };
+
+    const handleRecord = () => {
+        if (status === 'ready' || status === 'feedback') {
+            setAnalysis(null);
+            startRecording();
+            setStatus('recording');
+        } else if (status === 'recording') {
+            stopRecording();
+        }
+    };
+
+    const handleAnalysis = async () => {
+        if (!audioBlob) return;
+        setStatus('analyzing');
+        try {
+            const audioBase64 = await blobToBase64(audioBlob);
+            const feedback = await analyzePronunciation(drills[currentDrillIndex], audioBase64, audioBlob.type);
+            setAnalysis(feedback);
+            setStatus('feedback');
+        } catch (err) {
+            setError('Failed to analyze your pronunciation. Please try again.');
+            setStatus('ready');
+        }
+    };
+
+    const handleNext = () => {
+        if (currentDrillIndex < drills.length - 1) {
+            setCurrentDrillIndex(prev => prev + 1);
+        }
+    };
+
+    const handlePrev = () => {
+        if (currentDrillIndex > 0) {
+            setCurrentDrillIndex(prev => prev - 1);
+        }
+    };
+
+    const isUIActive = status === 'ready' || status === 'feedback';
+
+    return (
+        <div className="w-full space-y-6">
+            <div className="glass-pane p-4">
+                <label htmlFor="drill-target-input" className="block text-sm font-medium text-gray-400 mb-2 ml-4 text-emboss">What do you want to practice?</label>
+                <div className="flex gap-3">
+                    <input
+                        id="drill-target-input"
+                        type="text"
+                        value={target}
+                        onChange={(e) => setTarget(e.target.value)}
+                        placeholder="e.g., ship vs sheep, or the 'th' sound"
+                        className="flex-grow bg-transparent text-white placeholder-gray-400 border-none rounded-full py-3 px-5 focus:outline-none glass-input"
+                        disabled={!isUIActive && status !== 'idle'}
+                    />
+                    <button 
+                        onClick={handleGenerateDrill} 
+                        disabled={status === 'generating' || status === 'generating_audio' || status === 'analyzing' || status === 'recording' || target.trim() === ''}
+                        className="flex-shrink-0 flex items-center justify-center gap-2 px-6 py-3 font-medium text-white rounded-full glass-button disabled:opacity-50 disabled:cursor-not-allowed text-emboss"
+                    >
+                        <SparklesIcon className="w-5 h-5"/>
+                        <span>{status === 'generating' ? 'Generating...' : 'Drill'}</span>
+                    </button>
+                </div>
+                 <div className="mt-4 px-2">
+                    <p className="text-xs text-gray-500 mb-2 text-emboss text-center">Or try one of these common challenges:</p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                        {drillSuggestions.map((suggestion, index) => (
+                            <button
+                                key={index}
+                                onClick={() => setTarget(suggestion)}
+                                className="glass-button text-xs px-3 py-1.5 rounded-full text-gray-300 hover:text-white transition-colors duration-200"
+                            >
+                                {suggestion}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {error && <div className="glass-pane border-red-500/50 text-red-300 p-3 text-center text-emboss">{error}</div>}
+
+            {status === 'generating' && (
+                <div className="text-center p-4 glass-pane">
+                    <p className="text-gray-400 text-emboss">Generating your custom drills...</p>
+                </div>
+            )}
+            
+            {drills.length > 0 && (
+                <div className="glass-pane p-8 space-y-8 text-center animate-fade-in">
+                    <div className="flex justify-between items-center text-gray-400">
+                        <button onClick={handlePrev} disabled={currentDrillIndex === 0 || !isUIActive} className="glass-button p-2 rounded-full disabled:opacity-50">&lt;</button>
+                        <span className="font-semibold text-emboss">Drill {currentDrillIndex + 1} of {drills.length}</span>
+                        <button onClick={handleNext} disabled={currentDrillIndex === drills.length - 1 || !isUIActive} className="glass-button p-2 rounded-full disabled:opacity-50">&gt;</button>
+                    </div>
+
+                    <p className="text-2xl md:text-3xl font-light text-center leading-relaxed text-emboss min-h-[7rem] flex items-center justify-center">
+                        {drills[currentDrillIndex]}
+                    </p>
+
+                    <div className="flex justify-center items-center gap-8 pt-4">
+                        <button onClick={handlePlayTts} disabled={isTtsPlaying || !isUIActive} className="w-20 h-20 rounded-full glass-button flex items-center justify-center disabled:opacity-50">
+                            {status === 'generating_audio' ? <div className="w-5 h-5 border-2 border-white/50 border-t-white rounded-full animate-spin"></div> : <PlayIcon className="w-10 h-10" />}
+                        </button>
+                        <button onClick={handleRecord} disabled={!isUIActive && status !== 'recording'} 
+                        className={`w-24 h-24 rounded-full glass-button flex items-center justify-center transition-all duration-300 transform disabled:opacity-50
+                            ${status === 'recording' ? 'bg-red-500/30 border-red-400/80 shadow-[0_0_25px_rgba(255,80,80,0.5),_inset_0_1px_1px_rgba(255,255,255,0.2)]' : 'bg-blue-500/20 border-blue-400/60'}`}>
+                            {status === 'recording' ? <StopIcon className="w-10 h-10" /> : <MicIcon className="w-10 h-10" />}
+                        </button>
+                    </div>
+                </div>
+            )}
+            
+            {status === 'analyzing' && (
+                <div className="text-center p-4 glass-pane">
+                    <p className="text-gray-400 text-emboss">Analyzing your speech...</p>
+                </div>
+            )}
+
+            {status === 'feedback' && analysis && (
+                <FeedbackCard analysis={analysis} audioBlob={audioBlob} />
+            )}
+        </div>
+    );
+};
+
+// --- FROM App.tsx ---
+const NavButton = ({ label, icon, isActive, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center justify-center gap-2 w-32 px-4 py-2 rounded-full transition-all duration-300 ease-in-out text-emboss ${
+      isActive
+        ? 'bg-white/10 text-white font-semibold'
+        : 'text-gray-400 hover:bg-white/5 hover:text-white'
+    }`}
+  >
+    {icon}
+    <span className="text-sm">{label}</span>
+  </button>
+);
+
+const App = () => {
+  const [currentView, setCurrentView] = useState('practice');
+
+  return (
+    <div className="flex flex-col items-center min-h-screen font-sans">
+      <main className="flex-grow w-full max-w-3xl p-4 md:p-6 mt-16 mb-28">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-gray-500 text-xs text-emboss select-none text-center">
+            <p>SHADOWING AI</p>
+            <p>V.02</p>
+        </div>
+        <div className={currentView === 'practice' ? 'h-full' : 'hidden'}>
+          <PracticeView />
+        </div>
+        <div className={currentView === 'drills' ? 'h-full' : 'hidden'}>
+          <DrillsView />
+        </div>
+        <div className={currentView === 'chat' ? 'h-full' : 'hidden'}>
+          <ChatView />
+        </div>
+      </main>
+
+      <footer className="fixed bottom-0 left-0 right-0 flex justify-center p-4 z-10">
+        <nav className="flex justify-around items-center gap-2 p-1.5 glass-pane">
+          <NavButton
+            label="Practice"
+            icon={<PracticeIcon />}
+            isActive={currentView === 'practice'}
+            onClick={() => setCurrentView('practice')}
+          />
+          <NavButton
+            label="Drills"
+            icon={<DrillIcon />}
+            isActive={currentView === 'drills'}
+            onClick={() => setCurrentView('drills')}
+          />
+          <NavButton
+            label="Chat"
+            icon={<ChatIcon />}
+            isActive={currentView === 'chat'}
+            onClick={() => setCurrentView('chat')}
+          />
+        </nav>
+      </footer>
+    </div>
+  );
+};
+
+// --- FROM index.tsx ---
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+    </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

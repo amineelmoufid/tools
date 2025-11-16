@@ -1,0 +1,7 @@
+{
+  "name": "Shadowing AI Coach",
+  "description": "An AI-powered shadowing coach to perfect your pronunciation. Get instant, detailed feedback on phonemes, stress, and intonation to sound like a native speaker.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
